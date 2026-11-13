@@ -54,6 +54,8 @@ Kann ein Wert nicht gelesen werden, wird er ignoriert.
 ### Sonderfälle
 
 - **Weiß blinkend (alle LEDs):** Locate ist aktiv, der Node wurde per `touch /run/statusled/locate` gesucht. Das überdeckt alle anderen Zustände und hört nach 60 s auf.
+- **Regenbogen beim Start (alle LEDs):** Nach dem Start des Dienstes läuft 3 s ein Regenbogen als LED-Test. Bleibt dabei eine LED dunkel oder zeigt falsche Farben, stimmt etwas mit LED oder Verkabelung nicht.
+- **Regenbogen (alle LEDs):** Per `/run/statusled/rainbow` ausgelöst (siehe [Schnittstellen](#schnittstellen)), einfach zum Spaß. Locate hat Vorrang.
 - **Alle LEDs aus:** Der Dienst läuft nicht oder der Pi hat keinen Strom. Prüfen mit `systemctl status statusled`.
 - **Nur eine LED (`NUM_LEDS = 1`):** Sie zeigt den schlechtesten der drei Zustände, in dieser Reihenfolge (schlimmster zuerst): rot blinkend, lila blinkend, orange, blau, grün, aus. Welcher Bereich betroffen ist, muss man dann auf dem Node selbst nachsehen.
 
@@ -63,6 +65,14 @@ Kann ein Wert nicht gelesen werden, wird er ignoriert.
   `echo ok > /run/statusled/video`
 - **Locate:** Alle LEDs blinken 60 s weiß:
   `ssh <node> touch /run/statusled/locate`
+- **Rainbow:** Alle LEDs zeigen einen durchlaufenden Regenbogen. Was in der Datei steht, bestimmt die Dauer:
+  ```
+  echo 120 > /run/statusled/rainbow   # 120 s
+  echo on  > /run/statusled/rainbow   # dauerhaft, bis "off"
+  echo off > /run/statusled/rainbow   # sofort aus
+  touch /run/statusled/rainbow        # leere Datei: 60 s
+  ```
+  Die Dauer zählt ab dem letzten Schreiben der Datei. Bei unlesbarem Inhalt gelten 60 s.
 
 ## Installation
 

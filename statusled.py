@@ -9,8 +9,12 @@ LED 1  Video:  Heartbeat-Datei /run/statusled/video ("ok" | "warn" | "err")
 LED 2  Health: Temperatur + Unterspannung/Throttling
 
 Locate:  touch /run/statusled/locate  -> alle LEDs blinken 60 s weiß
+Rainbow: echo <s>|on|off > /run/statusled/rainbow -> Regenbogen für <s> Sekunden,
+         dauerhaft bzw. aus; leere Datei (touch) = 60 s. Locate hat Vorrang.
+Beim Start läuft kurz ein Regenbogen als LED-Test.
 Bei NUM_LEDS = 1 zeigt die eine LED den schlechtesten Zustand.
 """
+import colorsys
 import signal
 import socket
 import sys
@@ -28,6 +32,9 @@ FLOOD_PORT = 1337
 NET_INTERVAL = 10            # s zwischen Netz-Checks
 HEARTBEAT_TTL = 5            # s – älterer Video-Heartbeat gilt als "stale"
 LOCATE_SECONDS = 60
+RAINBOW_SECONDS = 60
+RAINBOW_PERIOD = 3.0         # s pro Farbumlauf
+STARTUP_RAINBOW = 3.0        # s Regenbogen beim Start (LED-Test)
 TEMP_WARN, TEMP_ERR = 70.0, 80.0
 
 COL = {
@@ -103,15 +110,47 @@ def health_state():
     return state
 
 
-def locate_active(now):
-    p = STATE_DIR / "locate"
+def trigger_active(name, seconds, now):
+    p = STATE_DIR / name
     try:
-        if now - p.stat().st_mtime < LOCATE_SECONDS:
+        if now - p.stat().st_mtime < seconds:
             return True
         p.unlink()
     except FileNotFoundError:
         pass
     return False
+
+
+def rainbow_active(now):
+    """Inhalt der Datei: Sekunden, "on" (dauerhaft), "off" (aus); leer = RAINBOW_SECONDS."""
+    p = STATE_DIR / "rainbow"
+    try:
+        mtime = p.stat().st_mtime
+        val = p.read_text().strip().lower()
+    except FileNotFoundError:
+        return False
+    if val == "on":
+        return True
+    if val == "off":
+        p.unlink(missing_ok=True)
+        return False
+    try:
+        seconds = float(val) if val else RAINBOW_SECONDS
+    except ValueError:
+        seconds = RAINBOW_SECONDS            # Unsinn in der Datei -> Standarddauer
+    if now - mtime < seconds:
+        return True
+    p.unlink(missing_ok=True)
+    return False
+
+
+def rainbow(now):
+    px = []
+    for i in range(NUM_LEDS):
+        hue = (now / RAINBOW_PERIOD + i / max(NUM_LEDS, 3)) % 1.0
+        r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+        px.append((int(r * 255), int(g * 255), int(b * 255)))
+    return px
 
 
 # ---------------------------------------------------------------- Main
@@ -123,14 +162,19 @@ def main():
     strip.begin()
 
     threading.Thread(target=net_worker, daemon=True).start()
+    started = time.time()
 
     try:
         while True:
             now = time.time()
             blink_on = int(now * 4) % 2 == 0          # 2 Hz
 
-            if locate_active(now):
+            rainbow_on = False
+            if trigger_active("locate", LOCATE_SECONDS, now):
                 px = [COL["locate"] if blink_on else COL["off"]] * NUM_LEDS
+            elif now - started < STARTUP_RAINBOW or rainbow_active(now):
+                px = rainbow(now)
+                rainbow_on = True
             else:
                 states = [net_state, video_state(now), health_state()]
                 if NUM_LEDS == 1:
@@ -140,7 +184,7 @@ def main():
                     px.append(COL["off"] if s in BLINKING and not blink_on else COL[s])
 
             show(strip, px)
-            time.sleep(0.1)
+            time.sleep(0.02 if rainbow_on else 0.1)   # Regenbogen braucht flüssige Frames
     finally:
         show(strip, [(0, 0, 0)] * NUM_LEDS)
 
