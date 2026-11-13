@@ -1,0 +1,15 @@
+[Unit]
+Description=WS2812 Status-LEDs (Pixelflut Video-Node)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/opt/statusled/bin/python /usr/local/bin/statusled.py
+Restart=always
+RestartSec=2
+# /run/statusled anlegen; beschreibbar, damit die Video-Software (anderer User) den Heartbeat schreiben kann
+RuntimeDirectory=statusled
+RuntimeDirectoryMode=0777
+
+[Install]
+WantedBy=multi-user.target
