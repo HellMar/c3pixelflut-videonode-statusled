@@ -35,8 +35,10 @@ Liest den Heartbeat aus `/run/statusled/video` (siehe [Schnittstellen](#schnitts
 |---|---|---|
 | aus | Datei fehlt oder ist leer: Video-Software läuft nicht oder hat sich noch nie gemeldet | Video-Software starten |
 | grün | Software meldet `ok` | – |
-| orange | Software meldet `warn` oder einen unbekannten Wert | Logs der Video-Software |
-| rot blinkend | Software meldet `err` | Logs der Video-Software |
+| grün blinkend | Software meldet `ok-blink`: läuft, aber im Sonderbetrieb (pixelstream: Bypass ohne Mapping) | gewollt? sonst `pixelstream-mode presentation` |
+| orange | Software meldet `warn` oder einen unbekannten Wert (pixelstream: wartet auf einen Sender) | Sender läuft? Logs der Video-Software |
+| orange blinkend | Software meldet `warn-blink`: Hinweis (pixelstream: Mapping-, Textur- oder Quellenmodus aktiv) | fertig? `pixelstream-mode presentation` |
+| rot blinkend | Software meldet `err` (pixelstream: Empfang lässt sich nicht öffnen) | Logs der Video-Software |
 | lila blinkend | letzter Heartbeat ist älter als 5 s: Software hängt oder ist abgestürzt | Prozess läuft noch? ggf. neu starten |
 
 ### LED 2 – Health
@@ -57,12 +59,13 @@ Kann ein Wert nicht gelesen werden, wird er ignoriert.
 - **Regenbogen beim Start (alle LEDs):** Nach dem Start des Dienstes läuft 3 s ein Regenbogen als LED-Test. Bleibt dabei eine LED dunkel oder zeigt falsche Farben, stimmt etwas mit LED oder Verkabelung nicht.
 - **Regenbogen (alle LEDs):** Per `/run/statusled/rainbow` ausgelöst (siehe [Schnittstellen](#schnittstellen)), einfach zum Spaß. Locate hat Vorrang.
 - **Alle LEDs aus:** Der Dienst läuft nicht oder der Pi hat keinen Strom. Prüfen mit `systemctl status statusled`.
-- **Nur eine LED (`NUM_LEDS = 1`):** Sie zeigt den schlechtesten der drei Zustände, in dieser Reihenfolge (schlimmster zuerst): rot blinkend, lila blinkend, orange, blau, grün, aus. Welcher Bereich betroffen ist, muss man dann auf dem Node selbst nachsehen.
+- **Nur eine LED (`NUM_LEDS = 1`):** Sie zeigt den schlechtesten der drei Zustände, in dieser Reihenfolge (schlimmster zuerst): rot blinkend, lila blinkend, orange blinkend, orange, blau, grün blinkend, grün, aus. Welcher Bereich betroffen ist, muss man dann auf dem Node selbst nachsehen.
 
 ## Schnittstellen
 
 - **Video-Heartbeat:** Die Video-Software schreibt etwa jede Sekunde `ok`, `warn` oder `err` in die Datei:
   `echo ok > /run/statusled/video`
+  Zusätzlich gibt es `ok-blink` und `warn-blink` für Zustände, die auffallen sollen, aber kein Fehler sind.
 - **Locate:** Alle LEDs blinken 60 s weiß:
   `ssh <node> touch /run/statusled/locate`
 - **Rainbow:** Alle LEDs zeigen einen durchlaufenden Regenbogen. Was in der Datei steht, bestimmt die Dauer:

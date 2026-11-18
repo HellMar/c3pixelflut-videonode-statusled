@@ -5,7 +5,7 @@ statusled – WS2812-Status-LEDs für Pixelflut-Video-Nodes (Raspberry Pi 4)
 Daten: GPIO21 (Pin 40), PCM via rpi_ws281x – läuft als root, keine config.txt-Änderung.
 
 LED 0  Netz:   Verbindung zu flood.c3pixelflut.de (TCP-Connect)
-LED 1  Video:  Heartbeat-Datei /run/statusled/video ("ok" | "warn" | "err")
+LED 1  Video:  Heartbeat-Datei /run/statusled/video ("ok" | "ok-blink" | "warn" | "warn-blink" | "err")
 LED 2  Health: Temperatur + Unterspannung/Throttling
 
 Locate:  touch /run/statusled/locate  -> alle LEDs blinken 60 s weiß
@@ -41,13 +41,15 @@ COL = {
     "off":    (0, 0, 0),
     "boot":   (0, 0, 255),     # blau: Check läuft noch
     "ok":     (0, 255, 0),
+    "ok-blink": (0, 255, 0),      # grün blinkend: läuft, aber Sonderbetrieb (z. B. Bypass)
     "warn":   (255, 100, 0),
+    "warn-blink": (255, 100, 0),  # orange blinkend: Hinweis, z. B. Mapping-Modus aktiv
     "err":    (255, 0, 0),     # blinkt
     "stale":  (160, 0, 255),   # lila blinkend: Video-Software meldet sich nicht mehr
     "locate": (255, 255, 255),
 }
-SEVERITY = ["off", "ok", "boot", "warn", "stale", "err"]
-BLINKING = {"err", "stale"}
+SEVERITY = ["off", "ok", "ok-blink", "boot", "warn", "warn-blink", "stale", "err"]
+BLINKING = {"err", "stale", "ok-blink", "warn-blink"}
 
 net_state = "boot"
 
@@ -85,7 +87,7 @@ def video_state(now):
         return "off"                         # Video-Software (noch) nicht vorhanden
     if now - mtime > HEARTBEAT_TTL:
         return "stale"
-    return val if val in ("ok", "warn", "err") else "warn"
+    return val if val in ("ok", "ok-blink", "warn", "warn-blink", "err") else "warn"
 
 
 def health_state():
