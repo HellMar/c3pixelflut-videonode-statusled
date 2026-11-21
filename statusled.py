@@ -4,7 +4,7 @@ statusled – WS2812-Status-LEDs für Pixelflut-Video-Nodes (Raspberry Pi 4)
 
 Daten: GPIO21 (Pin 40), PCM via rpi_ws281x – läuft als root, keine config.txt-Änderung.
 
-LED 0  Netz:   Verbindung zu flood.c3pixelflut.de (TCP-Connect)
+LED 0  Netz:   Ping an den Stream-Server (NET_HOST), bei dem der Node sein Video abholt
 LED 1  Video:  Heartbeat-Datei /run/statusled/video ("ok" | "ok-blink" | "warn" | "warn-blink" | "err")
 LED 2  Health: Temperatur + Unterspannung/Throttling
 
@@ -12,11 +12,14 @@ Locate:  touch /run/statusled/locate  -> alle LEDs blinken 60 s weiß
 Rainbow: echo <s>|on|off > /run/statusled/rainbow -> Regenbogen für <s> Sekunden,
          dauerhaft bzw. aus; leere Datei (touch) = 60 s. Locate hat Vorrang.
 Beim Start läuft kurz ein Regenbogen als LED-Test.
+Sind alle LEDs ALL_OK_SECONDS lang grün, läuft der Regenbogen, bis etwas nicht mehr grün ist
+(AUTO_RAINBOW). Grün blinkend (Sonderbetrieb, z. B. Bypass) zählt nicht als grün.
 Bei NUM_LEDS = 1 zeigt die eine LED den schlechtesten Zustand.
 """
 import colorsys
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -27,14 +30,15 @@ from rpi_ws281x import PixelStrip, Color
 NUM_LEDS = 3
 BRIGHTNESS = 0.12            # Halle ist dunkel, WS2812 auf 100 % blendet
 STATE_DIR = Path("/run/statusled")
-FLOOD_HOST = "flood.c3pixelflut.de"
-FLOOD_PORT = 1337
+NET_HOST = "stats.pixel.bl1nk.link"   # Stream-Server (pixelstream.server), Ziel des Pings
 NET_INTERVAL = 10            # s zwischen Netz-Checks
 HEARTBEAT_TTL = 5            # s – älterer Video-Heartbeat gilt als "stale"
 LOCATE_SECONDS = 60
 RAINBOW_SECONDS = 60
 RAINBOW_PERIOD = 3.0         # s pro Farbumlauf
 STARTUP_RAINBOW = 3.0        # s Regenbogen beim Start (LED-Test)
+AUTO_RAINBOW = True          # alles grün -> nach ALL_OK_SECONDS Regenbogen, bis etwas nicht grün ist
+ALL_OK_SECONDS = 5
 TEMP_WARN, TEMP_ERR = 70.0, 80.0
 
 COL = {
@@ -66,15 +70,18 @@ def show(strip, pixels):
 
 # ---------------------------------------------------------------- Checks
 def net_worker():
+    """Ping an den Stream-Server. Der Video-Stream selbst läuft per SRT über UDP, das sieht LED 1."""
     global net_state
     while True:
         try:
-            with socket.create_connection((FLOOD_HOST, FLOOD_PORT), timeout=3):
-                net_state = "ok"
+            socket.getaddrinfo(NET_HOST, None)
+            ok = subprocess.run(["ping", "-c", "1", "-W", "2", NET_HOST], stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, timeout=5).returncode == 0
+            net_state = "ok" if ok else "warn"   # Netz da, Server antwortet nicht
         except socket.gaierror:
-            net_state = "err"                # kein DNS -> vermutlich gar kein Netz
-        except OSError:
-            net_state = "warn"               # Netz da, Server nicht erreichbar
+            net_state = "err"                    # Name nicht auflösbar -> vermutlich gar kein Netz
+        except (OSError, subprocess.TimeoutExpired):
+            net_state = "warn"
         time.sleep(NET_INTERVAL)
 
 
@@ -165,20 +172,28 @@ def main():
 
     threading.Thread(target=net_worker, daemon=True).start()
     started = time.time()
+    all_ok_since = None              # seit wann alle LEDs grün sind
 
     try:
         while True:
             now = time.time()
             blink_on = int(now * 4) % 2 == 0          # 2 Hz
 
+            states = [net_state, video_state(now), health_state()]
+            if all(s == "ok" for s in states[:NUM_LEDS]):
+                if all_ok_since is None:
+                    all_ok_since = now
+            else:
+                all_ok_since = None          # irgendwas nicht grün -> sofort wieder Status
+            auto = AUTO_RAINBOW and all_ok_since is not None and now - all_ok_since >= ALL_OK_SECONDS
+
             rainbow_on = False
             if trigger_active("locate", LOCATE_SECONDS, now):
                 px = [COL["locate"] if blink_on else COL["off"]] * NUM_LEDS
-            elif now - started < STARTUP_RAINBOW or rainbow_active(now):
+            elif now - started < STARTUP_RAINBOW or rainbow_active(now) or auto:
                 px = rainbow(now)
                 rainbow_on = True
             else:
-                states = [net_state, video_state(now), health_state()]
                 if NUM_LEDS == 1:
                     states = [max(states, key=SEVERITY.index)]
                 px = []

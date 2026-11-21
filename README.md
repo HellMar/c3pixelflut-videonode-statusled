@@ -18,13 +18,13 @@ Die LEDs werden vom Pi aus gezählt: LED 0 sitzt am nächsten am Pi. Blinkende Z
 
 ### LED 0 – Netz
 
-Baut alle 10 s eine TCP-Verbindung zu `flood.c3pixelflut.de:1337` auf.
+Pingt alle 10 s den Stream-Server an, bei dem der Node sein Video abholt (`NET_HOST`, bei pixelstream `pixelstream.server`). Ob der Server auch Video schickt, zeigt LED 1.
 
 | Farbe | Bedeutung | Was prüfen |
 |---|---|---|
 | blau | Dienst gerade gestartet, erster Check läuft noch | dauert nur wenige Sekunden; bleibt sie blau, hängt der Dienst |
-| grün | Pixelflut-Server erreichbar | – |
-| orange | DNS geht, aber keine Verbindung zum Server (Port 1337) | Server down, Routing/Firewall, falsches VLAN |
+| grün | Stream-Server antwortet | – |
+| orange | Name lässt sich auflösen, aber der Server antwortet nicht auf Ping | Server aus, Routing/Firewall, falsches VLAN |
 | rot blinkend | Hostname lässt sich nicht auflösen, also wohl gar kein Netz | Kabel, Link-LED am Switch, DHCP, DNS |
 
 ### LED 1 – Video
@@ -36,9 +36,9 @@ Liest den Heartbeat aus `/run/statusled/video` (siehe [Schnittstellen](#schnitts
 | aus | Datei fehlt oder ist leer: Video-Software läuft nicht oder hat sich noch nie gemeldet | Video-Software starten |
 | grün | Software meldet `ok` | – |
 | grün blinkend | Software meldet `ok-blink`: läuft, aber im Sonderbetrieb (pixelstream: Bypass ohne Mapping) | gewollt? sonst `pixelstream-mode presentation` |
-| orange | Software meldet `warn` oder einen unbekannten Wert (pixelstream: wartet auf einen Sender) | Sender läuft? Logs der Video-Software |
+| orange | Software meldet `warn` oder einen unbekannten Wert (pixelstream: wartet auf den Server, der ist nicht erreichbar, lehnt ab oder schickt nichts) | LED 0 grün? Dann Sender/Server prüfen. Logs der Video-Software |
 | orange blinkend | Software meldet `warn-blink`: Hinweis (pixelstream: Mapping-, Textur- oder Quellenmodus aktiv) | fertig? `pixelstream-mode presentation` |
-| rot blinkend | Software meldet `err` (pixelstream: Empfang lässt sich nicht öffnen) | Logs der Video-Software |
+| rot blinkend | Software meldet `err` (pixelstream: Stream nicht dekodierbar, z. B. nicht 8 Bit 4:2:0) | Format beim Sender, Logs der Video-Software |
 | lila blinkend | letzter Heartbeat ist älter als 5 s: Software hängt oder ist abgestürzt | Prozess läuft noch? ggf. neu starten |
 
 ### LED 2 – Health
@@ -52,6 +52,16 @@ Prüft die CPU-Temperatur und die Unterspannungs-/Drosselungsflags des Pi.
 | rot blinkend | 80 °C oder mehr, oder gerade Unterspannung | Netzteil/Kabel tauschen, Kühlung |
 
 Kann ein Wert nicht gelesen werden, wird er ignoriert.
+
+### Alles grün: Regenbogen
+
+Sind alle LEDs 5 s lang grün (`ALL_OK_SECONDS`), wechseln sie in einen durchlaufenden Regenbogen. Sobald etwas nicht mehr grün ist, zeigen sie sofort wieder den Status. Grün blinkend (z. B. Bypass) zählt nicht als grün und bleibt sichtbar. Abschalten: `AUTO_RAINBOW = False`.
+
+| LED 0 (Netz) | LED 1 (Video) | heißt |
+|---|---|---|
+| grün | orange | Netz geht, Server schickt nichts: Sender prüfen |
+| orange | orange | Server nicht erreichbar: Server aus, Routing |
+| rot blinkend | orange | gar kein Netz: Kabel, DHCP, DNS |
 
 ### Sonderfälle
 
